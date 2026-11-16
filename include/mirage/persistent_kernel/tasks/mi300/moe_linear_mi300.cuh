@@ -40,6 +40,10 @@ namespace kernel {
 //   NUM_TOPK       - number of experts selected per token
 //   EXPERT_STRIDE  - number of thread blocks sharing the expert workload
 //   W13_LINEAR     - true for W13 (2D input), false for W2 (3D input)
+#ifdef MPK_DEBUG_MOE_MASK
+__device__ int g_moe_dbg_count = 0;
+#endif
+
 template <typename T,
           int BATCH_SIZE,
           int OUTPUT_SIZE,
@@ -97,18 +101,56 @@ __device__ __forceinline__ void
   // Last element of mask stores the total number of activated experts
   int const num_activated_experts = d_mask[NUM_EXPERTS];
 
+#ifdef MPK_DEBUG_MOE_MASK
+  // Diagnostic: is d_mask[] actually the compacted active-expert list, or is the
+  // MoE kernel reading garbage (which would index weights out of bounds)?
+  // Single printf per line -- interleaved printfs from concurrent tasks made the
+  // first version of this unreadable.
+  if (threadIdx.x == 0) {
+    int c = atomicAdd(&g_moe_dbg_count, 1);
+    if (c < 2) {
+      printf("[MOE_DBG] NE=%d nact=%d mask: %d %d %d %d %d %d %d %d %d %d %d %d"
+             " | route0: %d %d %d %d %d %d %d %d\n",
+             (int)NUM_EXPERTS, num_activated_experts,
+             (int)d_mask[0], (int)d_mask[1], (int)d_mask[2], (int)d_mask[3],
+             (int)d_mask[4], (int)d_mask[5], (int)d_mask[6], (int)d_mask[7],
+             (int)d_mask[8], (int)d_mask[9], (int)d_mask[10], (int)d_mask[11],
+             (int)d_routing[0], (int)d_routing[1], (int)d_routing[2],
+             (int)d_routing[3], (int)d_routing[4], (int)d_routing[5],
+             (int)d_routing[6], (int)d_routing[7]);
+    }
+  }
+#endif
+
   // Unpack expert_offset and n_tile_idx from packed metadata:
   //   lower 16 bits = expert_offset, upper 16 bits = n_tile_idx
   int const actual_expert_offset = expert_offset & 0xFFFF;
   int const n_tile_idx = (expert_offset >> 16) & 0xFFFF;
 
+  // MI300X adaptation / robustness guard.
+  // `d_mask` is produced by the routing task (moe_topk_softmax_mi300).  Measured
+  // on this machine, the MoE task can observe it in an inconsistent state --
+  // e.g. counter=1 while the list still holds the -1 "unmarked" sentinel.  A
+  // negative or out-of-range id is then used as
+  //     d_weight + expert_id * OUTPUT_STRIDE * REDUCTION_SIZE
+  // which is an out-of-bounds access (it is what produces
+  // "HIP error: an illegal memory access").  Clamping the count and skipping
+  // invalid ids degrades gracefully instead of faulting; see
+  // docs/results/2026-11-16-PartB-MoE归因.md.
+  int const n_act = (num_activated_experts < 0)            ? 0
+                    : (num_activated_experts > NUM_EXPERTS) ? (int)NUM_EXPERTS
+                                                            : num_activated_experts;
+
   // Iterate over activated experts with stride
 #pragma unroll 1
   for (int ae_idx = actual_expert_offset;
-       ae_idx < num_activated_experts;
+       ae_idx < n_act;
        ae_idx += EXPERT_STRIDE) {
     // Get the actual expert ID from the mask (dense list of active expert IDs)
     int32_t expert_id = d_mask[ae_idx];
+    if (expert_id < 0 || expert_id >= (int32_t)NUM_EXPERTS) {
+      continue;
+    }
 
     // Expert's weight slice: weight[expert_id, :, :]
     bf16 const *expert_weight = d_weight +

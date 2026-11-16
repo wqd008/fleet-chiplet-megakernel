@@ -91,6 +91,13 @@ if __name__ == "__main__":
     parser.add_argument("--max-new-tokens", type=int, default=None, help="Max decode tokens (default: fill max-seq-length)")
     parser.add_argument("--prompt", type=str, default=None, help="Override default prompt")
     args = parser.parse_args()
+    # MI300X adaptation: demo/qwen3/demo.py forces this off on ROCm ("CUTLASS
+    # requires CUDA tensor cores"); this demo did not, so it ran with
+    # use_cutlass_kernel=True on MI300X.  The flag also selects the return value
+    # of grid_for_rmsnorm_linear_layer (size//64 when off), so leaving it on
+    # changes the linear grids as well as the kernel selection.
+    if getattr(torch.version, "hip", None):
+        args.use_cutlass_kernel = False
     try:
         from mpi4py import MPI
         comm = MPI.COMM_WORLD
@@ -393,12 +400,15 @@ if __name__ == "__main__":
             }
             torch.cuda.empty_cache()
 
-        moe_gate_out = mpk.new_tensor(
-            dims=(args.max_num_batched_tokens, num_experts),
-            dtype=mi.bfloat16,
-            name="moe_gate_out",
-            io_category="cuda_tensor",
-        )
+        # DIAGNOSTIC: host-allocated and zero-initialised so the router's view of
+        # this buffer is defined.  If the router still sees NaNs the gate GEMM is
+        # not writing it at all; if it sees 0.0 the gate wrote nothing; if it sees
+        # real logits the earlier NaNs were uninitialised memory.
+        moe_gate_out_torch = torch.zeros(
+            (args.max_num_batched_tokens, num_experts),
+            dtype=torch.bfloat16, device="cuda")
+        moe_gate_out = mpk.attach_input(
+            torch_tensor=moe_gate_out_torch, name="moe_gate_out")
         moe_routing_indices = mpk.new_tensor(
             dims=(num_experts, args.max_num_batched_tokens),
             dtype=mi.int32,
@@ -447,6 +457,17 @@ if __name__ == "__main__":
             name="mlp_final",
             io_category="nvshmem_tensor" if world_size > 1 else "cuda_tensor",
         )
+        # MI300X adaptation.
+        # The lm_head is padded to vocab_size=153600 and is split across the
+        # worker count.  That only divides evenly on MI350, where
+        # num_workers = 248 CUs - 8 schedulers = 240 and 153600 % 240 == 0.
+        # MI300X has 304 CUs - 8 schedulers = 296 workers, and
+        # 153600 % 296 = 272 != 0, so the last partition reads past the padded
+        # lm_head -> "HIP error: an illegal memory access" on the first
+        # iteration, at every batch size and with or without gang.
+        # demo/qwen3/demo.py already guards this with the same expression; this
+        # demo did not.  Kept identical to demo.py so both paths agree.
+        argmax_tasks = mpk.num_workers if vocab_size % mpk.num_workers == 0 else 240
         argmax_in = mpk.new_tensor(
             dims=(args.max_num_batched_tokens, vocab_size),
             dtype=mi.bfloat16,
@@ -454,13 +475,13 @@ if __name__ == "__main__":
             io_category="cuda_tensor",
         )
         argmax_part_value = mpk.new_tensor(
-            dims=(args.max_num_batched_tokens, mpk.num_workers),
+            dims=(args.max_num_batched_tokens, argmax_tasks),
             dtype=mi.bfloat16,
             name="argmax_part_value",
             io_category="cuda_tensor",
         )
         argmax_part_index = mpk.new_tensor(
-            dims=(args.max_num_batched_tokens, mpk.num_workers),
+            dims=(args.max_num_batched_tokens, argmax_tasks),
             dtype=mi.int64,
             name="argmax_part_index",
             io_category="cuda_tensor",
@@ -481,12 +502,13 @@ if __name__ == "__main__":
             torch_tensor=model.model.embed_tokens.weight, name="embed_tokens"
         )
         
+        # block_dim matches demo/qwen3/demo.py's embed (128); this demo used 256.
         mpk.embed_layer(
-            input=x, 
-            weight=w, 
-            output=y, 
-            grid_dim=(1, 1, 1), 
-            block_dim=(256, 1, 1),
+            input=x,
+            weight=w,
+            output=y,
+            grid_dim=(1, 1, 1),
+            block_dim=(128, 1, 1),
             input_source=1,
         )
         x = y
@@ -683,19 +705,32 @@ if __name__ == "__main__":
                 )
             else:
                 # moe gate without split-k
+                #
+                # MI300X adaptation: this was grid_dim=(1, 1, 1) with
+                # block_dim=(256, 1, 1), which produced a moe_gate_out full of
+                # NaNs -> the router's tie-break degenerated to "always expert 0"
+                # -> the MoE collapsed to a single expert -> NaN propagated
+                # through the residual stream and every downstream layer.
+                # demo.py always sizes this grid as (output_dim // 64) with
+                # block_dim=(128, 1, 1) (see grid_for_rmsnorm_linear_layer);
+                # the gate's output is num_experts = 128, so 128 // 64 = 2.
                 mpk.linear_layer(
                     input=rmsnorm_out,
                     weight=w_moe_gate,
                     output=moe_gate_out,
-                    grid_dim=(1, 1, 1),
-                    block_dim=(256, 1, 1),
+                    grid_dim=(num_experts // 64, 1, 1),
+                    block_dim=(128, 1, 1),
                 )
             # topk+softmax
+            # block_dim must be WARPS_PER_CTA * 64 = 16 * 64 = 1024 to match the
+            # 16 warps the routing task is instantiated with (see
+            # src/kernel/task_register.cc).  With the original 256 threads only
+            # 16 of the batch's rows received routing.
             mpk.moe_topk_softmax_routing_layer(
                 input=moe_gate_out,
                 output=(moe_topk_weight, moe_routing_indices, moe_mask),
                 grid_dim=(1, 1, 1),
-                block_dim=(256, 1, 1),
+                block_dim=(1024, 1, 1),
             )
             # moe w13 linear
             if USE_GANG_MOE:
@@ -780,7 +815,7 @@ if __name__ == "__main__":
             input=rmsnorm_out,
             weight=w_proj,
             output=argmax_in,
-            grid_dim=(mpk.num_workers, 1, 1),
+            grid_dim=(argmax_tasks, 1, 1),
             block_dim=(256, 1, 1),
         )
         # add argmax layer
@@ -790,7 +825,7 @@ if __name__ == "__main__":
                                        1)
             argmax_reduce_grid_dim = (1, spec_decode_config.spec_length + 1, 1)
         else:
-            argmax_partial_grid_dim = (mpk.num_workers, 1, 1)
+            argmax_partial_grid_dim = (argmax_tasks, 1, 1)
             argmax_reduce_grid_dim = (1, 1, 1)
         mpk.argmax_partial_layer(
             input=argmax_in,

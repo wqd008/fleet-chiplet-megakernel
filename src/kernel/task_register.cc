@@ -3673,10 +3673,18 @@ int TaskRegister::register_moe_topk_softmax_mi300_task(
   assert(input_ops[0]->output_tensors[0].dim[1] == num_experts);
   mirage::transpiler::CodeKeeper code;
   code.inc_indent();
+  // MI300X adaptation: the row coverage of this kernel is compile-time fixed at
+  // WARPS_PER_CTA * (WAVE_SIZE * VPT / ELTS_PER_ROW) rows per block, and the
+  // demo launches it with grid=(1,1,1).  With WARPS_PER_CTA=4 and 128 experts
+  // that is only 4 * (64*8/128) = 16 rows, so any batch larger than 16 leaves
+  // the remaining rows with no routing (their routing_indices stay 0 and their
+  // topk weights stay uninitialised).  16 warps -> 64 rows, which covers the
+  // batch sizes this demo uses.  The caller must raise block_dim to
+  // WARPS_PER_CTA * 64 accordingly (demo_30B_A3B.py does).
   code.e("kernel::topk_softmax_mi300_task_impl<hip_bfloat16, $, $, $, $>(",
          /*VPT=*/8,
          /*EXPERTS=*/num_experts,
-         /*WARPS_PER_CTA=*/4,
+         /*WARPS_PER_CTA=*/16,
          /*BYTES_PER_LDG=*/16);
   code.e("    task_desc->input_ptrs[0],");
   code.e("    task_desc->output_ptrs[0],");

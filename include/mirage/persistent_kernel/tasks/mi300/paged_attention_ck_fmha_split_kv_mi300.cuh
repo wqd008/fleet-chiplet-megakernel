@@ -590,6 +590,8 @@ __device__ __forceinline__ void paged_attention_ck_fmha_split_kv_impl(
 
   ck_tile::index_t seqlen_q = query_end - query_start;
 
+#if defined(__gfx950__)
+  // MI350: dedicated hand-tuned decode kernel for seqlen_q == 1.
   if (seqlen_q == 1) {
     paged_attention_minimal_decode<T, NUM_QO_PER_KV, HEAD_DIM, PAGE_SIZE,
         MAX_SEQ_LEN, NUM_KV_CHUNKS, Q_WORKSPACE_STRIDE, KV_CACHE_STRIDE_T,
@@ -599,7 +601,13 @@ __device__ __forceinline__ void paged_attention_ck_fmha_split_kv_impl(
         qo_indptr_buffer_ptr, paged_kv_indptr_buffer_ptr,
         paged_kv_indices_buffer_ptr, paged_kv_last_page_len_buffer_ptr,
         request_id, kv_head_idx, kv_chunk_idx, scale_s);
-  } else {
+  } else
+#endif
+  {
+    // MI300X (gfx942) adaptation: paged_attention_minimal_decode is built on
+    // gfx950-only instructions, so seqlen_q == 1 also goes through the CK
+    // split-KV pipeline here. That pipeline takes seqlen_q as a runtime
+    // argument and handles 1 as well as any larger value.
     paged_attention_ck_fmha_prefill<T, NUM_QO_PER_KV, HEAD_DIM, PAGE_SIZE,
         MAX_SEQ_LEN, NUM_KV_CHUNKS, Q_WORKSPACE_STRIDE, KV_CACHE_STRIDE_T,
         NUM_KV_HEADS_T>(

@@ -31,7 +31,14 @@
 #include "tasks/mi300/multitoken_paged_attention_split_kv_mi300.cuh"
 #include "tasks/mi300/kv_cache_update_mi300.cuh"
 #ifdef MPK_USE_CK_FMHA
+// MI300X (gfx942) adaptation: this file is MI350-only in practice -- it uses
+// __builtin_amdgcn_mfma_f32_16x16x32_f16 and __builtin_amdgcn_ds_read_tr16_b64_v4f16,
+// both of which require gfx950. Transposed LDS reads (ds_read_tr) do not exist on
+// gfx942 at all. Excluded here; paged_attention_ck_fmha_split_kv_mi300.cuh routes
+// its call site accordingly.
+#if defined(__gfx950__)
 #include "tasks/mi300/paged_attention_decode_minimal_mi300.cuh"
+#endif
 #include "tasks/mi300/paged_attention_ck_fmha_split_kv_mi300.cuh"
 #include "tasks/mi300/gang_attention_mi300.cuh"
 #endif

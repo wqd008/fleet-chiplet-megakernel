@@ -24,6 +24,10 @@
 
 namespace kernel {
 
+#ifdef MPK_DEBUG_MOE_MASK
+__device__ int g_topk_dbg_count = 0;
+#endif
+
 static constexpr int MI300_WARP_SIZE = 64; // AMD wavefront size
 
 // Fused TopK softmax kernel for AMD MI300/MI350.
@@ -57,6 +61,21 @@ __device__ __forceinline__ void topk_softmax_mi300_task_impl(
   float *output = static_cast<float *>(output_ptr);
   int *routing_indices = static_cast<int *>(routing_indices_ptr);
   int *active_expert_ids = static_cast<int *>(active_expert_ids_ptr);
+
+#ifdef MPK_DEBUG_MOE_MASK
+  // If every top-k slot resolves to expert 0 the argmax tie-break is firing,
+  // which means the gate logits are all equal -- i.e. the gate GEMM produced
+  // nothing.  Print them before this kernel zeroes the buffer.
+  if (threadIdx.x == 0) {
+    int c = atomicAdd(&g_topk_dbg_count, 1);
+    if (c < 3) {
+      printf("[TOPK_DBG] rows=%d gate_in[0][0..7]: %f %f %f %f %f %f %f %f\n",
+             num_rows,
+             (float)input[0], (float)input[1], (float)input[2], (float)input[3],
+             (float)input[4], (float)input[5], (float)input[6], (float)input[7]);
+    }
+  }
+#endif
 
   // Initialize routing indices to 0 and active expert marks to -1
   for (int expert = start_expert + threadIdx.x; expert < end_expert;
@@ -114,12 +133,22 @@ __device__ __forceinline__ void topk_softmax_mi300_task_impl(
     }
 
     // Reset input buffer to 0 (for split-k gate linear compatibility)
+    //
+    // MI300X adaptation: DISABLED.  This is a WRITE to the task's own input
+    // tensor (moe_gate_out), which is also written by the gate GEMM immediately
+    // upstream.  Measured consequence: the router observed the gate buffer
+    // before the gate had written it (all NaNs), the top-k tie-break then
+    // degenerated to "always expert 0", and the whole MoE collapsed to a single
+    // expert.  It is only needed by the --splitk-gate path, which additionally
+    // has no reduction stage in this demo, so nothing is lost by dropping it.
+#ifdef MPK_MOE_TOPK_ZERO_INPUT
     for (int ldg = 0; ldg < LDG_PER_THREAD; ++ldg) {
       int src_offset = ldg * THREADS_PER_ROW * ELTS_PER_LDG;
       for (int e = 0; e < ELTS_PER_LDG; ++e) {
         thread_read_ptr[src_offset + e] = static_cast<T>(0);
       }
     }
+#endif
 
     // Max reduction within subgroup
     float thread_max = row_chunk[0];
