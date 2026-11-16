@@ -1,0 +1,42 @@
+run_id	tag	stage	repeat	model_short	bs	tile_n	m_tiles	m_tiles_gateup	wgm	msplit	ntile	splitk	ksplits	use_gang	use_gang_moe	ck_fmha	fused_silu	ms_per_token	combined_ms_per_token	prefill_ms_per_token	decode_iters	prefill_iters	run_tokens	seconds	exit_code	compile_ok	timed_out	note
+20261116T100636Z	A0_tile64	A0	0	Qwen3-8B	32	64		1	0					1		0	1	38.925	35.973	1.242	1106	3	1200	120.5	0	1	0	feasibility probe (defaults elsewhere)
+20261116T100636Z	A0_tile128	A0	0	Qwen3-8B	32	128		1	0					1		0	1	35.349	32.668	1.128	1106	3	1200	116.3	0	1	0	feasibility probe (defaults elsewhere)
+20261116T100636Z	A0_tile256	A0	0	Qwen3-8B	32	256		1	0					1		0	1	40.456	37.388	1.291	1106	3	1200	121.2	0	1	0	feasibility probe (defaults elsewhere)
+20261116T100636Z	A1_mpk_baseline	A1	0	Qwen3-8B	32									0		0	1	37.913	35.038	1.210	1106	3	1200	120.9	0	1	0	USE_GANG=0 (Mirage/MPK baseline)
+20261116T100636Z	A1_gang_default	A1	0	Qwen3-8B	32	64		1	0					1		0	1	39.757	36.742	1.269	1106	3	1200	120.7	0	1	0	Fleet shipped default (tile_n=64,wgm=0,m_tiles=bs//16)
+20261116T102628Z	A2_tile64_wgm0	A2	0	Qwen3-8B	32	64		1	0					1		0	1	38.893	35.943	1.241	1106	3	1200	119.7	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile64_wgm1	A2	0	Qwen3-8B	32	64		1	1					1		0	1	40.355	37.295	1.288	1106	3	1200	121.5	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile64_wgm2	A2	0	Qwen3-8B	32	64		1	2					1		0	1	38.863	35.916	1.240	1106	3	1200	119.7	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile64_wgm4	A2	0	Qwen3-8B	32	64		1	4					1		0	1	37.144	34.327	1.185	1106	3	1200	118.0	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile128_wgm0	A2	0	Qwen3-8B	32	128		1	0					1		0	1	37.505	34.661	1.197	1106	3	1200	118.9	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile128_wgm1	A2	0	Qwen3-8B	32	128		1	1					1		0	1	36.239	33.491	1.157	1106	3	1200	118.4	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile128_wgm2	A2	0	Qwen3-8B	32	128		1	2					1		0	1	36.086	33.350	1.152	1106	3	1200	117.1	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile128_wgm4	A2	0	Qwen3-8B	32	128		1	4					1		0	1	36.481	33.715	1.164	1106	3	1200	116.9	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile256_wgm0	A2	0	Qwen3-8B	32	256		1	0					1		0	1	38.865	35.917	1.240	1106	3	1200	120.2	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile256_wgm1	A2	0	Qwen3-8B	32	256		1	1					1		0	1	38.815	35.871	1.239	1106	3	1200	119.5	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile256_wgm2	A2	0	Qwen3-8B	32	256		1	2					1		0	1	39.746	36.732	1.268	1106	3	1200	121.0	0	1	0	main sweep bs=32 m_tiles=2
+20261116T102628Z	A2_tile256_wgm4	A2	0	Qwen3-8B	32	256		1	4					1		0	1	38.758	35.819	1.237	1106	3	1200	120.0	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile64_wgm0	A2	0	Qwen3-8B	32	64		1	0					1		0	1	38.845	35.899	1.240	1106	3	1200	120.3	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile64_wgm1	A2	0	Qwen3-8B	32	64		1	1					1		0	1	37.805	34.938	1.207	1106	3	1200	118.4	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile64_wgm2	A2	0	Qwen3-8B	32	64		1	2					1		0	1	37.864	34.993	1.208	1106	3	1200	118.8	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile64_wgm4	A2	0	Qwen3-8B	32	64		1	4					1		0	1	37.633	34.779	1.201	1106	3	1200	118.2	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile128_wgm0	A2	0	Qwen3-8B	32	128		1	0					1		0	1	37.541	34.694	1.198	1106	3	1200	117.9	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile128_wgm1	A2	0	Qwen3-8B	32	128		1	1					1		0	1	35.903	33.181	1.146	1106	3	1200	116.4	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile128_wgm2	A2	0	Qwen3-8B	32	128		1	2					1		0	1	35.336	32.656	1.128	1106	3	1200	117.5	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile128_wgm4	A2	0	Qwen3-8B	32	128		1	4					1		0	1	36.267	33.517	1.157	1106	3	1200	117.7	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile256_wgm0	A2	0	Qwen3-8B	32	256		1	0					1		0	1	40.290	37.234	1.286	1106	3	1200	121.6	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile256_wgm1	A2	0	Qwen3-8B	32	256		1	1					1		0	1	38.628	35.699	1.233	1106	3	1200	120.2	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile256_wgm2	A2	0	Qwen3-8B	32	256		1	2					1		0	1	40.151	37.106	1.281	1106	3	1200	121.8	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A2_tile256_wgm4	A2	0	Qwen3-8B	32	256		1	4					1		0	1	40.437	37.370	1.291	1106	3	1200	121.6	0	1	0	main sweep bs=32 m_tiles=2
+20261116T105218Z	A3_tile128_wgm2_mt1	A3	0	Qwen3-8B	32	128	1	1	2					1		0	1	38.200	35.303	1.219	1106	3	1200	119.0	0	1	0	m_tiles sweep (tile_n=128,wgm=2); via GANG_M_TILES_OVERRIDE
+20261116T105218Z	A3_tile128_wgm2_mt2	A3	0	Qwen3-8B	32	128	2	1	2					1		0	1	37.484	34.642	1.196	1106	3	1200	119.0	0	1	0	m_tiles sweep (tile_n=128,wgm=2); via GANG_M_TILES_OVERRIDE
+20261116T105218Z	A3_tile128_wgm2_mt4	A3	0	Qwen3-8B	32	128	4	1	2					1		0	1	37.030	34.222	1.182	1106	3	1200	119.3	0	1	0	m_tiles sweep (tile_n=128,wgm=2); via GANG_M_TILES_OVERRIDE
+20261116T112540Z	A4_bs1_default	A4	0	Qwen3-8B	1	64		1	0					1		0	1	10.291	10.291	10.291	1106	94	1200	52.8	0	1	0	Fleet default at this bs
+20261116T112540Z	A4_bs32_default	A4	0	Qwen3-8B	32	64		1	0					1		0	1	38.313	35.407	1.223	1106	3	1200	119.3	0	1	0	Fleet default at this bs
+20261116T112540Z	A4_bs64_default	A4	0	Qwen3-8B	64	64		1	0					1		0	1							40.9	-6	0	0	Fleet default at this bs | no timing line; last: python: /root/projects/fleet-chiplet-megakernel/src/threadblock/graph.cc:45: mirage::threadblock::Graph::Graph(dim3, dim3, int, int): Assertion `static_cast<siz
+20261116T112540Z	A4_bs1_best	A4	0	Qwen3-8B	1	128	2	1	2					1		0	1							13.4	1	0	0	A2/A3 winner (tile_n=128,wgm=2,m_tiles=2 or default) | no timing line; last: AssertionError: batch 1 must be divisible by m_tiles 2
+20261116T112540Z	A4_bs32_best	A4	0	Qwen3-8B	32	128	2	1	2					1		0	1	36.334	33.579	1.160	1106	3	1200	117.1	0	1	0	A2/A3 winner (tile_n=128,wgm=2,m_tiles=2 or default)
+20261116T112540Z	A4_bs64_best	A4	0	Qwen3-8B	64	128	2	1	2					1		0	1							13.5	-6	0	0	A2/A3 winner (tile_n=128,wgm=2,m_tiles=2 or default) | no timing line; last: python: /root/projects/fleet-chiplet-megakernel/src/threadblock/graph.cc:45: mirage::threadblock::Graph::Graph(dim3, dim3, int, int): Assertion `static_cast<siz
+20261116T112540Z	A5_ntile_tile128_wgm2	A5	0	Qwen3-8B	32	128		1	2		1			1		0	1	36.387	33.628	1.161	1106	3	1200	117.3	0	1	0	NEGATIVE control: USE_GANG_N_TILE=1 (expect no weight-reuse win)
+20261116T112540Z	A5_gateup_gt_mt_tile128_wgm2	A5	0	Qwen3-8B	32	128	2	4	2					1		0	1	36.277	33.526	1.158	1106	3	1200	117.0	0	1	0	POSITIVE control: GANG_M_TILES_GATEUP != GANG_M_TILES
+manual	A4_bs1_best_mt1	A4	0	Qwen3-8B	1	128	1	1	2					1		0	1	11.227	11.227	11.227	1106	94	1200		0	1	0	MANUAL run (driver can't express per-bs m_tiles); log logs/manual_bs1_best.log
