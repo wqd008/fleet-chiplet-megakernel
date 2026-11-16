@@ -23,6 +23,10 @@
 
 namespace kernel {
 
+#ifdef MPK_DEBUG_MOE_MASK
+__device__ int g_moe_dbg_mulsum_count = 0;
+#endif
+
 template <typename T,
           int BATCH_SIZE,
           int OUTPUT_SIZE,
@@ -37,6 +41,17 @@ __device__ __forceinline__ void
   T const *__restrict__ d_residual = static_cast<T const *>(residual_ptr);
   float const *__restrict__ d_weight = static_cast<float const *>(weight_ptr);
   T *__restrict__ d_output = static_cast<T *>(output_ptr);
+
+#ifdef MPK_DEBUG_MOE_MASK
+  if (threadIdx.x == 0) {
+    int c = atomicAdd(&g_moe_dbg_mulsum_count, 1);
+    if (c < 2) {
+      printf("[MOE_DBG] mul_sum_add B=%d OUT=%d TOPK=%d OSTRIDE=%d\n",
+             (int)BATCH_SIZE, (int)OUTPUT_SIZE, (int)NUM_TOPK,
+             (int)OUTPUT_STRIDE);
+    }
+  }
+#endif
 
   for (int row_idx = 0; row_idx < BATCH_SIZE; ++row_idx) {
     for (int i = threadIdx.x; i < OUTPUT_SIZE; i += blockDim.x) {

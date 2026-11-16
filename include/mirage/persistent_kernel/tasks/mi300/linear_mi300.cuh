@@ -34,6 +34,10 @@
 
 namespace kernel {
 
+#ifdef MPK_DEBUG_MOE_MASK
+__device__ int g_lin_dbg_count = 0;
+#endif
+
 using bfloat16 = type::bfloat16_t;
 
 // AMD MFMA-based GEMM using CK Tile library for optimized memory access
@@ -55,6 +59,24 @@ __device__ __forceinline__ void linear_kernel(void const *input_ptr,
   linear_kernel_ck<T, BATCH_SIZE, REDUCTION_SIZE, FORCE_SMALL_TILE>(
       input_ptr, weight_ptr, residual_ptr, output_ptr, num_active_tokens, residual_add,
       output_size, o_stride);
+#ifdef MPK_DEBUG_MOE_MASK
+  // Prints every linear kernel that actually executes, so we can see whether
+  // the MoE gate (output_size == 128) runs at all.
+  if (threadIdx.x == 0) {
+    int c = atomicAdd(&g_lin_dbg_count, 1);
+    if (c < 24) {
+      T const *ip = static_cast<T const *>(input_ptr);
+      T const *wp = static_cast<T const *>(weight_ptr);
+      T const *op = static_cast<T const *>(output_ptr);
+      printf("[LIN_DBG] B=%d K=%d OSIZE=%d OSTRIDE=%d nat=%d | in0=%f w0=%f out0=%f in_ptr=%llx out_ptr=%llx\n",
+             (int)BATCH_SIZE, (int)REDUCTION_SIZE, output_size, o_stride,
+             num_active_tokens,
+             (float)ip[0], (float)wp[0], (float)op[0],
+             (unsigned long long)(uintptr_t)input_ptr,
+             (unsigned long long)(uintptr_t)output_ptr);
+    }
+  }
+#endif
 #ifdef MPK_ENABLE_DEVICE_TASK_TIMING
   __syncthreads();
   if (threadIdx.x == 0 && blockIdx.x == 0) {

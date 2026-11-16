@@ -18,6 +18,10 @@
 
 namespace kernel {
 
+#ifdef MPK_DEBUG_MOE_MASK
+__device__ int g_rms_dbg_count = 0;
+#endif
+
 // Non-temporal store helpers for MALL cache optimization (NT=1 → MALL: no-allocate)
 #ifndef NT_STORE_HIP_HELPERS_DEFINED
 #define NT_STORE_HIP_HELPERS_DEFINED
@@ -45,6 +49,18 @@ __device__ __forceinline__ void rms_norm_impl(void const *input_ptr,
   using bf16 = __hip_bfloat16;
 
   const bf16* __restrict__ d_weight = static_cast<const bf16*>(weight_ptr);
+
+#ifdef MPK_DEBUG_MOE_MASK
+  if (threadIdx.x == 0) {
+    int c = atomicAdd(&g_rms_dbg_count, 1);
+    if (c < 8) {
+      { const bf16 *ip = (const bf16 *)input_ptr;
+        printf("[RMS_DBG] in[0]=%f in[1]=%f in[8]=%f in[64]=%f in[1024]=%f in[2047]=%f\n",
+               (float)ip[0], (float)ip[1], (float)ip[8], (float)ip[64],
+               (float)ip[1024], (float)ip[2047]); }
+    }
+  }
+#endif
 
   extern __shared__ char smem[];
   float* reduce_smem = reinterpret_cast<float*>(smem);
@@ -160,11 +176,23 @@ __device__ __forceinline__ void rms_norm_impl(void const *input_ptr,
         out_arr[4 + i] = __float2bfloat16(val * rms_rcp * w);
       }
 
-      // 128-bit non-temporal store (NT=1 → MALL: no-allocate)
+      // MI300X adaptation: plain stores instead of non-temporal (NT) stores.
+      // The NT store bypasses the cache, and the consumer of rmsnorm_out (the
+      // MoE gate / qkv GEMM) was observed reading the buffer *before* the NT
+      // data became visible -- it saw whatever the freshly-allocated buffer
+      // contained (NaNs).  With a normal store the value is coherent through the
+      // cache hierarchy as usual.
+#if defined(MPK_RMSNORM_USE_NT_STORE)
       nt_store_u64_hip(&d_output[offset],
           *reinterpret_cast<uint64_t*>(&out_arr[0]));
       nt_store_u64_hip(&d_output[offset + 4],
           *reinterpret_cast<uint64_t*>(&out_arr[4]));
+#else
+      *reinterpret_cast<uint64_t*>(&d_output[offset]) =
+          *reinterpret_cast<uint64_t*>(&out_arr[0]);
+      *reinterpret_cast<uint64_t*>(&d_output[offset + 4]) =
+          *reinterpret_cast<uint64_t*>(&out_arr[4]);
+#endif
     }
 
     // Handle remainder

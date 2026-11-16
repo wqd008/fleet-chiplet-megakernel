@@ -344,6 +344,8 @@ def get_compile_command(
             flags = flags + ["-DMPK_NT_WEIGHT_LOADS"]
         if int(os.environ.get("TRACE_MOE", "0")) == 1:
             flags = flags + ["-DMPK_TRACE_MOE_DISPATCH"]
+        if int(os.environ.get("DEBUG_MOE_MASK", "0")) == 1:
+            flags = flags + ["-DMPK_DEBUG_MOE_MASK"]
         if int(os.environ.get("CK_FMHA_1TOK", "0")) == 1:
             # Force seqlen_q=1: uses merge path only (faster decode, slower prefill)
             flags = flags + ["-DMPK_MAX_TOKENS_PER_REQUEST=1"]

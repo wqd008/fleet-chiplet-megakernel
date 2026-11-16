@@ -18,6 +18,10 @@
 
 namespace kernel {
 
+#ifdef MPK_DEBUG_MOE_MASK
+__device__ int g_moe_dbg_silu_count = 0;
+#endif
+
 // Non-temporal store helpers for MALL cache optimization (NT=1 → MALL: no-allocate)
 #ifndef NT_STORE_HIP_HELPERS_DEFINED
 #define NT_STORE_HIP_HELPERS_DEFINED
@@ -55,6 +59,17 @@ __device__ __forceinline__ void silu_mul_task_impl(void const *input_ptr,
   const bf16* __restrict__ d_input = static_cast<const bf16*>(input_ptr);
   const bf16* __restrict__ d_mul = static_cast<const bf16*>(input_ptr) + OUTPUT_SIZE;
   bf16* __restrict__ d_output = static_cast<bf16*>(output_ptr);
+
+#ifdef MPK_DEBUG_MOE_MASK
+  if (threadIdx.x == 0) {
+    int c = atomicAdd(&g_moe_dbg_silu_count, 1);
+    if (c < 2) {
+      printf("[MOE_DBG] silu_mul B=%d OUT=%d ISTRIDE=%d OSTRIDE=%d nat=%d\n",
+             (int)BATCH_SIZE, (int)OUTPUT_SIZE, (int)I_STRIDE, (int)O_STRIDE,
+             num_active_tokens);
+    }
+  }
+#endif
 
   // Specialized path for batch_size=1 (common case in decode)
   if constexpr (BATCH_SIZE == 1) {

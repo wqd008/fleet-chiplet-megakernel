@@ -80,3 +80,13 @@ ncu_tmp
 #nsys
 *.nsys-rep
 *.sqlite
+# --- MI300X port: fetched dependencies (see docs/MI300X-移植指南.md) ---
+# Reproducible via experiments/setup_mi300x_env.sh; ~324 MB total, do not commit.
+deps/json/
+deps/cutlass/
+deps/composable_kernel/
+deps/z3/
+
+# Persistent megakernel build cache (must be deleted before每个参数变更)
+permanent_output_dir/
+*_output.json
